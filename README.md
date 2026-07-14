@@ -1,94 +1,113 @@
-# QwenCode as a Core
+# QwenCode as a Core → DNA Formation Lab
 
-Экспериментальный проект по использованию `@qwen-code/qwen-code-core` как ядра для AI Canvas — суверенной среды анализа документов для C-level руководителей.
+**Эксперимент по формированию ДНК среды** — композитной программы (qwen-code + LLM), порождающей органы анализа (агенты).
 
-## Цель
+## Онтология (СМД)
 
-Исследовать возможность использования qwen-code не как отдельного CLI-агента, а как **встраиваемой библиотеки** для построения специализированных AI-приложений.
+| Понятие | Определение |
+|---|---|
+| **Субъект** | C-level менеджер |
+| **Объект** | Персональная вычислительная среда |
+| **Проблема** | Информационная перегруженность субъекта |
+| **Решение** | Среда разгружает субъекта, создаёт условия для постоянной памяти |
+| **ДНК среды** | qwen-code + LLM (композитная, активная, когнитивная программа) |
+| **Органы** | Агенты, порождаемые из ДНК (pdf_normalizer, domain_analyzer, reflector) |
 
-## Архитектура
+## ДНК = qwen-code + LLM
 
 ```
 ┌─────────────────────────────────────────┐
-│  AI Canvas UI (CLI / Web / Bot)         │
-├─────────────────────────────────────────┤
-│  @qwen-code/qwen-code-core              │
-│  ├── AgentCore (agent loop)             │
-│  ├── CoreToolScheduler (tool dispatch)  │
-│  ├── MemoryManager (RAG)                │
-│  └── PermissionManager (approval)       │
-├─────────────────────────────────────────┤
-│  Custom Tools                           │
-│  ├── pdf_normalizer                     │
-│  ├── domain_analyzer                    │
-│  └── reflector                          │
-└─────────────────────────────────────────┘
+│  ДНК среды (композитная)                 │
+│                                          │
+│  ┌──────────────┐  ┌──────────────┐    │
+│  │  qwen-code   │  │     LLM      │    │
+│  │  (исполняемая│  │  (когнитивная│    │
+│  │    часть)    │  │    часть)    │    │
+│  │              │  │              │    │
+│  │ • agent loop │  │ • reasoning  │    │
+│  │ • tool       │  │ • understand │    │
+│  │   dispatch   │  │ • generation │    │
+│  │ • permissions│  │              │    │
+│  │ • memory     │  │              │    │
+│  └──────┬───────┘  └──────┬───────┘    │
+│         │                 │             │
+│         └────────┬────────┘             │
+│                  │                       │
+│           ДНК порождает                 │
+│                  │                       │
+└──────────────────┼───────────────────────┘
+                   │
+    ┌──────────────┼──────────────┐
+    │              │              │
+    ▼              ▼              ▼
+┌────────┐   ┌────────┐   ┌────────┐
+│ Орган 1│   │ Орган 2│   │ Орган 3│
+│ pdf_   │   │domain_ │   │reflec- │
+│normal- │   │analyz- │   │  tor   │
+│  izer  │   │   er   │   │        │
+└────────┘   └────────┘   └────────┘
+qwen-code   qwen-code   qwen-code
++ qwen3-vl  + qwen3.6   + qwen3-
+  :30b        :35b        coder-next
 ```
 
-## Что мы берём из qwen-code
+## Принципы
 
-- **Agent loop** — LLM call → tool detection → tool execution → result → next LLM call
-- **Tool dispatch** — управление вызовами инструментов, retry, error handling
-- **Memory / RAG** — индексация и поиск по контексту
-- **Permission management** — approval pipeline (plan/default/auto-edit/auto/yolo)
+1. **Вычислительная ДНК** — активная, видимая, эволюционирующая (не биологическая)
+2. **Зависимость — управляемый риск** — всегда есть альтернативы (другие SDK, другие LLM) или обратный инжиниринг
+3. **Разные LLM → разная ДНК** — биоразнообразие, не монокультура
+4. **ДНК композитна** — можно заменить SDK или LLM независимо
 
-## Что мы пишем сами
+## Разные ДНК для разных задач
 
-- **Custom tools** — специализированные инструменты для парсинга документов
-- **UI** — интерфейс пользователя (CLI, веб, Telegram-бот)
-- **Business logic** — доменная логика AI Canvas
+| ДНК | SDK | LLM | Потенциал |
+|---|---|---|---|
+| ДНК-1 | @qwen-code/sdk | qwen3-coder-next | Кодовый анализ |
+| ДНК-2 | @qwen-code/sdk | qwen3-vl:30b | Мультимодальный анализ |
+| ДНК-3 | @qwen-code/sdk | qwen3.6:35b | Методологический анализ |
+| ДНК-4 | @qwen-code/sdk | deepseek-r1:32b | Reasoning |
 
-## Установка
+## Цель проекта
 
-```bash
-npm install
-```
+**Формирование ДНК-1** (SDK + qwen3-coder-next) и проверка её работоспособности:
 
-## Использование
-
-```bash
-npm start
-```
+1. ✅ Подключить SDK (@qwen-code/sdk)
+2. ✅ Подключить LLM (qwen3-coder-next через Ollama)
+3. ✅ Сформировать ДНК-1 (SDK + qwen3-coder-next)
+4. ⏳ Порождать органы (агенты с custom tools)
+5. ⏳ Проверить: работает ли ДНК?
 
 ## Структура проекта
 
 ```
 qwencode-as-a-core/
 ├── src/
-│   ├── index.ts              # Точка входа
-│   ├── tools/                # Custom tools
-│   │   ├── pdf_normalizer.ts
-│   │   ├── domain_analyzer.ts
-│   │   └── reflector.ts
-│   └── ui/                   # Интерфейс пользователя
-│       ├── cli.ts
-│       └── web.ts
+│   ├── index.ts              # ✅ SDK интеграция (3 примера)
+│   └── tools/                # Заготовки custom tools (органы)
+│       ├── pdf_normalizer.ts
+│       ├── domain_analyzer.ts
+│       └── reflector.ts
 ├── tests/
 │   └── tools.test.ts
 ├── docs/
-│   ├── architecture.md
-│   └── api.md
-├── package.json
+│   └── architecture.md
+├── package.json              # @qwen-code/sdk ^0.1.8
 ├── tsconfig.json
 ├── .gitignore
-└── LICENSE
+├── LICENSE                   # Apache-2.0
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+└── README.md
 ```
 
-## Технологии
+## Статус
 
-- **TypeScript** — язык проекта
-- **@qwen-code/qwen-code-core** — ядро agent loop
-- **Node.js** — runtime
-- **Ollama** — локальный инференс моделей (qwen3-coder-next, qwen3-vl:30b)
+🚧 **Экспериментальная стадия** — ДНК-1 сформирована, проверяется работоспособность.
+
+## Связь с AI Canvas
+
+Этот проект — **лаборатория по формированию ДНК** для AI Canvas. Результат: рабочая ДНК, порождающая органы анализа документов.
 
 ## Лицензия
 
 Apache-2.0 — как и qwen-code.
-
-## Связь с AI Canvas
-
-Этот проект — **параллельный эксперимент** к основному MAS-оркестратору на Python. Цель: понять, можно ли использовать qwen-code как готовый agent loop для AI Canvas, или лучше написать свой на Python.
-
-## Статус
-
-🚧 **Экспериментальная стадия** — проверка гипотезы о встраиваемости qwen-code.
