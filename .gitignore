@@ -44,5 +44,6 @@ __pycache__/
 *.pyc
 *.pyo
 examples/fradkov-ontology/output/
+!examples/fradkov-ontology/output/fradkov_ontology_graph.json
 examples/fradkov-ontology/data/
 examples/fradkov-ontology/lib/
