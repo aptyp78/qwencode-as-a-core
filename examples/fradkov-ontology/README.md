@@ -1,108 +1,179 @@
-# Fradkov Ontology — Production Stack
+# Fradkov Ontology — онтологическое векторно-графовое пространство
 
-Векторно-графовое пространство цифровой тени Фрадкова П.М.
+Первый экземпляр онтологического пространства в среде **QwenCode-as-a-Core**.
 Инструмент стохастического сопоставления новых документов с известным контекстом деятельности.
 
-## Архитектура
+## Методологический фундамент
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Query API (FastAPI, port 8000)                              │
-│  POST /query — стохастическое сопоставление                  │
-│  POST /ingest — загрузка нового документа                    │
-│  GET /stats, /clusters, /transitions                         │
-├─────────────────────────────────────────────────────────────┤
-│  Qdrant (port 6333)          │  Neo4j (port 7474/7687)      │
-│  1378+ векторов (4096d)      │  1461 узел, 3421 ребро       │
-│  Cosine similarity search    │  Граф связей + Cypher queries │
-├─────────────────────────────────────────────────────────────┤
-│  Ollama (port 11434)                                         │
-│  qwen3-embedding:8b — векторизация (локально)               │
-│  qwen3-coder-next — обогащение (локально/Ollama Cloud)      │
-└─────────────────────────────────────────────────────────────┘
-```
+**СМД (Щедровицкий):** граф — не архив фактов, а знаковая репрезентация следов деятельности. Деятельность — процесс, граф — статическая структура, фиксирующая следы.
 
-## Быстрый старт
+**Activity Theory (Engeström):** субъект (Пётр Фрадков) → инструмент (граф) → объект (деятельность). Граф — медиатор между исследователем и деятельностью субъекта.
+
+**Ключевое правило:** нет source_url → нет цитаты. Каждое высказывание traceable до источника. Без этого граф — галлюцинация.
+
+## Текущее состояние
+
+| Метрика | Значение |
+|---------|----------|
+| **Цитат** | 2042 |
+| **С source_url** | 2042 (100%) |
+| **Верифицировано (cosine ≥0.6)** | 1936 (95%) |
+| **Узлов** | 2764 |
+| **Рёбер** | 2332 |
+| **Семантических связей** | 2229 |
+| **Кластеров (K-means)** | 20 |
+| **Вероятностных рёбер** | 20 |
+| **Покрытие** | 2011-2026 |
+
+## Схема графа
+
+### Типы узлов
+
+| Тип | Описание | Пример |
+|-----|----------|--------|
+| **Quote** | Цитата/утверждение Петра Фрадкова | «Наши клиенты — основа технологического суверенитета» |
+| **Person** | Персона (NER-извлечение) | Фрадков, Пётр Михайлович |
+| **Organization** | Организация (NER-извлечение) | Промсвязьбанк, ВФЛА, РЭЦ |
+| **Event** | Событие/форум (NER-извлечение) | ПМЭФ-2026 |
+| **Place** | Место/страна (NER-извлечение) | Москва, Россия |
+
+### Типы рёбер
+
+| Тип | Описание | Атрибуты |
+|-----|----------|----------|
+| **semantically_related** | Семантическая связь (cosine ≥0.75) | similarity |
+| **probabilistic_transition** | Вероятностный переход между кластерами | probability |
+| **MENTIONS_PERSON** | Цитата упоминает персону | — |
+| **MENTIONS_ORG** | Цитата упоминает организацию | — |
+| **MENTIONS_EVENT** | Цитата упоминает событие | — |
+| **MENTIONS_PLACE** | Цитата упоминает место | — |
+
+### Атрибуты Quote
+
+| Атрибут | Описание | Обязательный |
+|---------|----------|-------------|
+| `text` | Текст цитаты | ✅ |
+| `source_url` | URL источника | ✅ |
+| `validation_status` | verified / partial / weak | ✅ |
+| `validation_confidence` | Cosine similarity с источником | ✅ |
+| `subject` | petr_m_fradkov | ✅ |
+| `cluster` | ID кластера (0-19) | — |
+| `period` | Временной период | — |
+
+## Как воспроизвести
+
+### Предварительные требования
+
+- Python 3.10+ с venv
+- Docker (Qdrant + Neo4j)
+- Ollama локально: `qwen3-embedding:8b`, `qwen3-coder-next`
+- Яндекс Cloud CLI (`yc`) + IAM-токен
+
+### Шаг 1: Установка зависимостей
 
 ```bash
-# Запуск всего стека
-./start.sh
-
-# Или по шагам:
-docker compose up -d                          # Qdrant + Neo4j
+python3 -m venv venv
 source venv/bin/activate
-python scripts/migrate_to_qdrant.py           # Миграция векторов
-python scripts/migrate_to_neo4j.py            # Миграция графа
-python scripts/query_api.py                   # API-сервер
+pip install -r requirements.txt
 ```
 
-## Использование
+### Шаг 2: Запуск инфраструктуры
 
-### Стохастическое сопоставление
+```bash
+docker compose up -d  # Qdrant + Neo4j
+```
+
+### Шаг 3: Сбор данных (основной пайплайн)
+
+```bash
+# Сбор цитат из Яндекс-поиска с валидацией
+python scripts/rebuild_pipeline.py
+```
+
+Пайплайн:
+1. Яндекс-поиск по 20-60 запросам → URL + сниппеты
+2. Fetch страниц → извлечение текста
+3. Локальный LLM → извлечение утверждений Фрадкова
+4. Валидация: cosine similarity цитаты с текстом страницы
+5. Сохранение в `output/rebuild_verified_quotes.json`
+
+### Шаг 4: Загрузка в граф
+
+```bash
+# Загрузка в JSON-граф
+python3 -c "
+import json, uuid
+with open('output/fradkov_ontology_graph.json') as f: g = json.load(f)
+with open('output/rebuild_verified_quotes.json') as f: v = json.load(f)
+# ... merge logic
+"
+```
+
+### Шаг 5: Миграция в Qdrant + Neo4j
+
+```bash
+python scripts/migrate_to_qdrant.py
+python scripts/migrate_to_neo4j.py
+```
+
+### Шаг 6: Запуск API
+
+```bash
+python scripts/query_api.py
+# Swagger UI: http://localhost:8000/docs
+```
+
+## API
+
+### POST /query — стохастическое сопоставление
+
 ```bash
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
   -d '{"text": "Цифровой рубль и суверенная платёжная инфраструктура"}'
 ```
 
-### Загрузка нового документа
+### POST /ingest — загрузка нового документа
+
 ```bash
-# Из текста
-python scripts/ingest_document.py --text "Текст цитаты..." --date 2026-07-15
-
-# Из файла
-python scripts/ingest_document.py --file document.txt --source https://...
-
-# Из URL
-python scripts/ingest_document.py --url https://example.com/article
+curl -X POST http://localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Текст...", "source_url": "https://...", "date": "2026-07-15"}'
 ```
 
-### Swagger UI
-Откройте http://localhost:8000/docs
+### GET /stats — статистика графа
 
-## Структура
-
-```
-fradkov-ontology/
-├── docker-compose.yml          # Qdrant + Neo4j
-├── start.sh                    # Запуск стека
-├── requirements.txt            # Python-зависимости
-├── data/                       # Исходные данные
-│   ├── fradkov_all_real_quotes.json
-│   └── fradkov_historical_quotes.json
-├── output/                     # Граф (JSON)
-│   └── fradkov_ontology_stochastic.json
-├── scripts/
-│   ├── migrate_to_qdrant.py    # JSON → Qdrant
-│   ├── migrate_to_neo4j.py     # JSON → Neo4j
-│   ├── query_api.py            # FastAPI сервер
-│   ├── ingest_document.py      # Загрузка документов
-│   ├── phase1_1_and_1_2.py     # Векторизация (фаза 1)
-│   ├── phase2_historical_parsing.py
-│   ├── phase3_stochastic_layer.py
-│   └── vectorize_historical_and_connect.py
-├── docs/
-│   └── GRAPH_PURPOSE.md
-└── venv/                       # Python venv
+```bash
+curl http://localhost:8000/stats
 ```
 
-## Данные
+### GET /transitions — матрица переходов
 
-| Метрика | Значение |
-|---------|----------|
-| Реальных высказываний | 1379+ |
-| Покрытие | 2000-2026 (27 лет) |
-| Семантических связей | 1929+ |
-| Кластеров (K-means) | 20 |
-| Вероятностных рёбер | 30 |
-| Типов узлов | 10 (Person, Quote, Organization, ...) |
-| Типов рёбер | 11 (SAID, SEMANTICALLY_RELATED, ...) |
+```bash
+curl http://localhost:8000/transitions
+```
 
-## Принципы
+## Принципы (Конституция)
 
-1. **Суверенность** — все вычисления локальные, air-gap capable
+1. **Суверенность** — вычисления локальные, air-gap capable
 2. **Реальность данных** — только реальные высказывания из открытых источников
 3. **Векторно-графовая природа** — семантика (embeddings) + структура (граф)
 4. **Стохастичность** — вероятностные связи, матрицы переходов
 5. **Доказуемость** — каждое высказывание traceable до источника
 6. **Инкрементальное обогащение** — каждый новый документ обогащает граф
+
+## Готовность к воспроизведению
+
+| Компонент | Статус | Примечание |
+|-----------|--------|------------|
+| Пайплайн сбора | ✅ | `rebuild_pipeline.py` — полностью автономен |
+| Валидатор | ✅ | Cosine similarity ≥0.6 |
+| Граф (JSON) | ✅ | 2 MB в репозитории |
+| Embeddings | ⚠️ | Не в репозитории (252 MB), генерируются при сборе |
+| Qdrant | ⚠️ | Требует Docker + миграции |
+| Neo4j | ⚠️ | Требует Docker + миграции |
+| API | ⚠️ | Требует запуска вручную |
+| IAM-токен | ❌ | Нужен `yc iam create-token` (не хранится) |
+| One-click воспроизведение | ❌ | Нет единой команды |
+
+**Вердикт:** технология воспроизводима, но требует ручной настройки инфраструктуры. Для полной автоматизации нужен `make all` или `docker compose up` с预настроенными сервисами.
