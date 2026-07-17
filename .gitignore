@@ -37,3 +37,12 @@ coverage/
 # Qwen Code specific
 .qwen/
 *.qwen
+
+# Python (Fradkov Ontology)
+venv/
+__pycache__/
+*.pyc
+*.pyo
+examples/fradkov-ontology/output/
+examples/fradkov-ontology/data/
+examples/fradkov-ontology/lib/
