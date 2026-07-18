@@ -38,12 +38,12 @@ coverage/
 .qwen/
 *.qwen
 
-# Python (Fradkov Ontology)
+# Python (Personal Ontology)
 venv/
 __pycache__/
 *.pyc
 *.pyo
-examples/fradkov-ontology/output/
-!examples/fradkov-ontology/output/fradkov_ontology_graph.json
-examples/fradkov-ontology/data/
-examples/fradkov-ontology/lib/
+examples/personal-ontology/output/
+!examples/personal-ontology/output/personal_ontology_graph.json
+examples/personal-ontology/data/
+examples/personal-ontology/lib/
