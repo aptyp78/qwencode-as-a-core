@@ -161,17 +161,64 @@ def search_yandex(query, token, page=0):
 
 
 def fetch_page(url):
+    """Загружает страницу с поддержкой JS-рендеринга и PDF."""
     try:
+        # Проверяем, PDF ли это
+        if url.lower().endswith('.pdf'):
+            return fetch_pdf(url)
+
+        # Обычная загрузка через requests
         resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"})
         if resp.status_code != 200:
             return ""
         text = resp.text
+
+        # Если мало текста — пробуем Playwright для JS-рендеринга
+        if len(text) < 500:
+            text = fetch_js_rendered(url) or text
+
+        # Очистка HTML
         text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<[^>]+>', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
-        return text[:8000]
+        return text[:15000]  # Увеличено с 8000 до 15000
     except:
+        return ""
+
+
+def fetch_js_rendered(url):
+    """JS-рендеринг через Playwright (fallback)."""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, timeout=10000)
+            page.wait_for_timeout(2000)  # Ждём загрузки JS
+            text = page.content()
+            browser.close()
+            return text
+    except Exception as e:
+        print(f"  Playwright failed: {e}")
+        return None
+
+
+def fetch_pdf(url):
+    """Извлечение текста из PDF через PyMuPDF."""
+    try:
+        import fitz  # PyMuPDF
+        resp = requests.get(url, timeout=15)
+        if resp.status_code != 200:
+            return ""
+        doc = fitz.open(stream=resp.content, filetype="pdf")
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+        return text[:15000]
+    except Exception as e:
+        print(f"  PDF fetch failed: {e}")
         return ""
 
 
