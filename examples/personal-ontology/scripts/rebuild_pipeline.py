@@ -34,14 +34,20 @@ EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "qwen3-embedding:8b"
 LLM_MODEL = "qwen3-coder-next"
 
-OUTPUT_PATH = "/Users/arturoceretnyj/personal-ontology/output/rebuild_verified_quotes.json"
+OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "output", "rebuild_verified_quotes.json")
 
 # ═══ SEARCH QUERIES ═══
-QUERIES_FILE = "/Users/arturoceretnyj/personal-ontology/output/expanded_queries.json"
+# Приоритет: queries.json (автосгенерированные) → expanded_queries.json → хардкод
+QUERIES_FILE = os.path.join(os.path.dirname(__file__), "..", "output", "queries.json")
+FALLBACK_FILE = os.path.join(os.path.dirname(__file__), "..", "output", "expanded_queries.json")
 if os.path.exists(QUERIES_FILE):
     with open(QUERIES_FILE) as f:
         QUERIES = json.load(f)
-    print(f"✓ Загружено запросов из файла: {len(QUERIES)}")
+    print(f"✓ Запросы из config (автосгенерированные): {len(QUERIES)}")
+elif os.path.exists(FALLBACK_FILE):
+    with open(FALLBACK_FILE) as f:
+        QUERIES = json.load(f)
+    print(f"✓ Запросы из файла: {len(QUERIES)}")
 else:
     QUERIES = [
     # ПСБ / Банк
