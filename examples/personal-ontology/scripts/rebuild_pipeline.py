@@ -33,6 +33,9 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "qwen3-embedding:8b"
 LLM_MODEL = "qwen3-coder-next"
+TOKEN_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".personal-ontology")
+TOKEN_CACHE_FILE = os.path.join(TOKEN_CACHE_DIR, "yandex_token.json")
+TOKEN_TTL = 11 * 3600  # 11 hours
 
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "output", "rebuild_verified_quotes.json")
 
@@ -91,12 +94,32 @@ else:
 ]
 
 
-def get_iam_token():
+def get_iam_token(force_refresh=False):
+    """Получает IAM-токен с кэшированием (TTL 11 часов)."""
+    os.makedirs(TOKEN_CACHE_DIR, exist_ok=True)
+
+    # Проверяем кэш
+    if not force_refresh and os.path.exists(TOKEN_CACHE_FILE):
+        try:
+            with open(TOKEN_CACHE_FILE) as f:
+                cache = json.load(f)
+            if time.time() - cache.get("timestamp", 0) < TOKEN_TTL:
+                return cache.get("token")
+        except:
+            pass
+
+    # Получаем новый токен
     try:
         result = subprocess.run(["yc", "iam", "create-token"], capture_output=True, text=True, timeout=15)
-        return result.stdout.strip() if result.returncode == 0 else None
+        if result.returncode == 0:
+            token = result.stdout.strip()
+            # Кэшируем
+            with open(TOKEN_CACHE_FILE, "w") as f:
+                json.dump({"token": token, "timestamp": time.time()}, f)
+            return token
     except:
-        return None
+        pass
+    return None
 
 
 def search_yandex(query, token, page=0):
@@ -106,6 +129,8 @@ def search_yandex(query, token, page=0):
             json={"query": {"search_type": "SEARCH_TYPE_RU", "query_text": query, "page": page},
                   "folder_id": FOLDER_ID, "max_passages": 3},
             timeout=20)
+        if resp.status_code == 401:
+            return []  # Trigger token refresh
         if resp.status_code != 200:
             return []
 
@@ -248,6 +273,14 @@ def main():
         all_results = []
         for page in (0, 1, 2):  # multi-page: 3x results
             results = search_yandex(query, token, page=page)
+            # Автообновление токена при 401
+            if not results and page == 0:
+                print(f"  Токен истёк, обновляю...")
+                token = get_iam_token(force_refresh=True)
+                if not token:
+                    print(f"  ✗ Не удалось обновить токен")
+                    break
+                results = search_yandex(query, token, page=page)
             all_results.extend(results)
         new_results = [r for r in all_results if r["url"] not in seen_urls]
         for r in all_results:
