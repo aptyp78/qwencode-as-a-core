@@ -319,10 +319,44 @@ JSON: ["цитата 1", "цитата 2"]"""
     return []
 
 
-def get_embedding(text):
+def get_embedding(text, use_cache=True):
+    """Получает эмбеддинг с кэшированием."""
+    import hashlib
+    cache_file = os.path.join(TOKEN_CACHE_DIR, "embeddings_cache.json")
+
+    if use_cache:
+        # Проверяем кэш
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file) as f:
+                    cache = json.load(f)
+                text_hash = hashlib.md5(text.encode()).hexdigest()
+                if text_hash in cache:
+                    return cache[text_hash]
+            except:
+                pass
+
+    # Вычисляем
     try:
         resp = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "prompt": text}, timeout=30)
-        return resp.json().get("embedding", [])
+        embedding = resp.json().get("embedding", [])
+
+        # Кэшируем
+        if embedding and use_cache:
+            os.makedirs(TOKEN_CACHE_DIR, exist_ok=True)
+            cache = {}
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file) as f:
+                        cache = json.load(f)
+                except:
+                    pass
+            text_hash = hashlib.md5(text.encode()).hexdigest()
+            cache[text_hash] = embedding
+            with open(cache_file, "w") as f:
+                json.dump(cache, f)
+
+        return embedding
     except:
         return []
 
