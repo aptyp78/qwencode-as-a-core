@@ -275,17 +275,45 @@ def fetch_pdf(url):
 
 
 def extract_quotes(text, url):
-    """Извлекает утверждения Фрадкова из текста через LLM (DashScope → Local fallback)."""
-    prompt = f"""Извлеки ключевые утверждения Петра Фрадкова (председатель ПСБ, президент ВФЛА) из текста.
-Это могут быть не только прямые цитаты, но и пересказы его высказываний.
-Верни СТРОГО JSON массив строк. Если утверждений нет — [].
+    """Двухэтапная экстракция с контролем галлюцинаций.
+
+    Этап 1: «Есть ли утверждения субъекта?» (да/нет)
+    Этап 2: «Извлеки точные формулировки» (только если да)
+    Пост-проверка: cosine similarity < 0.5 → отбросить
+    """
+    # Этап 1: Детекция
+    detect_prompt = f"""[РОЛЬ] Statement Detector
+[ОГРАНИЧЕНИЕ] НЕ извлекай цитаты. Только ответь: да или нет.
+
+Есть ли в этом тексте утверждения, приписываемые Петру Фрадкову?
+
+Текст: {text[:2000]}
+
+Ответь ОДНИМ словом: да или нет."""
+
+    try:
+        detection = llm_generate(detect_prompt, max_tokens=10)
+        if "нет" in detection.lower() and "да" not in detection.lower():
+            return []  # Нет утверждений субъекта — пропускаем
+    except:
+        pass  # При ошибке детекции — продолжаем (лучше извлечь лишнее, чем пропустить)
+
+    # Этап 2: Экстракция
+    extract_prompt = f"""[РОЛЬ] Quote Extractor
+[ОГРАНИЧЕНИЕ] Извлекай ТОЛЬКО текст, который приписывается Петру Фрадкову. НЕ добавляй свои интерпретации. НЕ придумывай цитаты.
+
+Извлеки утверждения Петра Фрадкова из текста.
+Возвращай только то, что есть в тексте — не парафразируй, не дополняй.
 
 Текст: {text[:3000]}
+
+Верни СТРОГО JSON массив строк.
+Если нет утверждений Петра Фрадкова — верни [].
 
 JSON: ["утверждение 1", "утверждение 2"]"""
 
     try:
-        content = llm_generate(prompt, max_tokens=500)
+        content = llm_generate(extract_prompt, max_tokens=500)
         if not content:
             return []
 
@@ -297,7 +325,16 @@ JSON: ["утверждение 1", "утверждение 2"]"""
         end = content.rfind("]") + 1
         if start >= 0 and end > start:
             quotes = json.loads(content[start:end])
-            return [q for q in quotes if isinstance(q, str) and len(q) > 30]
+            # Пост-проверка: cosine similarity с текстом
+            valid = []
+            for q in quotes:
+                if isinstance(q, str) and len(q) > 30:
+                    confidence = validate_quote(q, text)
+                    if confidence >= 0.5:  # Порог: 0.5
+                        valid.append(q)
+                    else:
+                        pass  # Галлюцинация — отброшена
+            return valid
     except:
         pass
     return []
