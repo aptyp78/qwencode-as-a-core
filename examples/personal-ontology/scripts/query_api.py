@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Query API: стохастическое сопоставление новых документов с графом Фрадкова.
+Query API: стохастическое сопоставление новых документов с графом.
 
 Endpoints:
   POST /query       — основной запрос: текст → анализ + сопоставление
@@ -8,17 +8,22 @@ Endpoints:
   GET  /stats       — статистика графа
   GET  /clusters    — список кластеров с примерами
   GET  /transitions — матрица переходов
+  GET  /history     — история запросов
+
+Auth: Bearer token (API_KEY env var или hardcoded)
+Pagination: limit/offset для /query
 """
 
 import json
 import uuid
+import os
 import requests
 import numpy as np
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from collections import defaultdict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Query
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
@@ -26,6 +31,9 @@ from neo4j import GraphDatabase
 
 
 # ── Config ──────────────────────────────────────────────────────────
+API_KEY = os.environ.get("PERSONAL_ONTOLOGY_API_KEY", "dev-key-change-in-production")
+HISTORY_FILE = os.path.join(os.path.dirname(__file__), "..", "output", "query_history.jsonl")
+
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
 EMBEDDING_MODEL = "qwen3-embedding:8b"
 QDRANT_HOST = "localhost"
@@ -34,10 +42,10 @@ COLLECTION = "personal_quotes"
 NEO4J_URI = "bolt://localhost:7687"
 NEO4J_USER = "neo4j"
 NEO4J_PASS = "personal2026"
-GRAPH_JSON = "/Users/arturoceretnyj/personal-ontology/output/personal_ontology_stochastic.json"
+GRAPH_JSON = os.path.join(os.path.dirname(__file__), "..", "output", "personal_ontology_graph.json")
 
 # ── Init ────────────────────────────────────────────────────────────
-app = FastAPI(title="Fradkov Ontology API", version="1.0.0")
+app = FastAPI(title="Personal Ontology API", version="1.0.0")
 qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
 
@@ -46,6 +54,35 @@ with open(GRAPH_JSON, "r", encoding="utf-8") as f:
     _graph = json.load(f)
 _stochastic = _graph.get("metadata", {}).get("stochastic_layer", {})
 _transition_matrix = _stochastic.get("transition_matrix", {})
+
+
+# ── Auth ────────────────────────────────────────────────────────────
+def verify_api_key(authorization: Optional[str] = Header(None)):
+    """Проверяет API ключ."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or token != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return token
+
+
+def log_query(query_text: str, results_count: int, confidence: float):
+    """Логирует запрос в историю."""
+    try:
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "query": query_text[:200],
+            "results": results_count,
+            "confidence": confidence
+        }
+        with open(HISTORY_FILE, "a") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    except:
+        pass
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -131,6 +168,12 @@ class QueryRequest(BaseModel):
     top_k: int = 10
     min_similarity: float = 0.4
     cluster_filter: Optional[int] = None
+    # Pagination
+    limit: int = 10
+    offset: int = 0
+    # Filters
+    period_filter: Optional[str] = None
+    validation_filter: Optional[str] = None
 
 class QueryResponse(BaseModel):
     query_text: str
@@ -160,8 +203,11 @@ class StatsResponse(BaseModel):
 
 # ── Endpoints ───────────────────────────────────────────────────────
 @app.post("/query", response_model=QueryResponse)
-def query(req: QueryRequest):
+def query(req: QueryRequest, auth: str = Header(None)):
     """Стохастическое сопоставление текста с графом."""
+    # Auth
+    verify_api_key(auth)
+
     # 1. Векторизация запроса
     try:
         embedding = get_embedding(req.text)
@@ -171,8 +217,8 @@ def query(req: QueryRequest):
     if not embedding:
         raise HTTPException(500, "Empty embedding")
 
-    # 2. Поиск в Qdrant
-    search_params = {"query": embedding, "limit": req.top_k}
+    # 2. Поиск в Qdrant с пагинацией
+    search_params = {"query": embedding, "limit": req.offset + req.limit}
 
     if req.cluster_filter is not None:
         search_params["query_filter"] = Filter(
@@ -238,6 +284,12 @@ def query(req: QueryRequest):
         analysis_parts.append(f"Виды деятельности: {', '.join(act_names)}.")
 
     analysis = " ".join(analysis_parts) if analysis_parts else "Совпадений не найдено."
+
+    # Pagination
+    matches = matches[req.offset:req.offset + req.limit]
+
+    # Logging
+    log_query(req.text, len(matches), confidence)
 
     return QueryResponse(
         query_text=req.text[:200],
