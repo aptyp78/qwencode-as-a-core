@@ -29,6 +29,17 @@ Quote ──[said_at]──> OpenEvent ──[occurred_in]──> Circumstance
 
 **Ключевое правило:** нет source_url → нет цитаты. Каждое высказывание traceable до источника. Без этого граф — галлюцинация.
 
+## Быстрый старт
+
+```bash
+# Из корня qwencode-as-a-core:
+make config    # Генерация запросов из config/subject.yaml
+make build     # Полный цикл сбора
+make validate  # Валидация порога
+make serve     # Запуск API (port 8000)
+make clean     # Очистка кэша
+```
+
 ## Текущее состояние
 
 | Метрика | Значение |
