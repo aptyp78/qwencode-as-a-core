@@ -29,10 +29,16 @@ from urllib.parse import quote
 # ═══ CONFIG ═══
 YANDEX_URL = "https://searchapi.api.cloud.yandex.net/v2/web/search"
 FOLDER_ID = "b1ga4lrfj1k4581lr0j2"
+
+# LLM: DashScope (cloud) → Local Ollama (fallback)
+DASHSCOPE_ENDPOINT = "https://ws-yrwako2ivay84n1p.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+DASHSCOPE_MODEL = "qwen3.6-35b-a3b"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "qwen3-embedding:8b"
-LLM_MODEL = "qwen3-coder-next"
+LLM_MODEL = "qwen3-coder-next"  # local fallback
+USE_CLOUD_LLM = True  # Приоритет: cloud (DashScope)
+
 TOKEN_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".personal-ontology")
 TOKEN_CACHE_FILE = os.path.join(TOKEN_CACHE_DIR, "yandex_token.json")
 TOKEN_TTL = 11 * 3600  # 11 hours
@@ -92,6 +98,52 @@ else:
     # Биография
     "Пётр Михайлович Фрадков биография карьера",
 ]
+
+
+def get_dashscope_key():
+    """Получает DashScope API ключ из macOS Keychain."""
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", "dashscope-modelstudio", "-w"],
+            capture_output=True, text=True, timeout=5
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+    except:
+        return None
+
+
+def llm_generate(prompt, max_tokens=800):
+    """Генерация через DashScope (cloud) с fallback на Local Ollama."""
+    # Попытка DashScope
+    if USE_CLOUD_LLM:
+        key = get_dashscope_key()
+        if key:
+            try:
+                resp = requests.post(
+                    f"{DASHSCOPE_ENDPOINT}/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={
+                        "model": DASHSCOPE_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": max_tokens,
+                        "temperature": 0.1
+                    },
+                    timeout=30
+                )
+                if resp.status_code == 200:
+                    return resp.json()["choices"][0]["message"]["content"]
+            except:
+                pass  # Fallback to local
+
+    # Fallback: Local Ollama
+    try:
+        resp = requests.post(OLLAMA_URL, json={
+            "model": LLM_MODEL, "prompt": prompt, "stream": False,
+            "options": {"temperature": 0.1, "num_predict": max_tokens}
+        }, timeout=60)
+        return resp.json().get("response", "")
+    except:
+        return ""
 
 
 def get_iam_token(force_refresh=False):
@@ -223,7 +275,7 @@ def fetch_pdf(url):
 
 
 def extract_quotes(text, url):
-    """Извлекает утверждения Фрадкова из текста через локальный LLM."""
+    """Извлекает утверждения Фрадкова из текста через LLM (DashScope → Local fallback)."""
     prompt = f"""Извлеки ключевые утверждения Петра Фрадкова (председатель ПСБ, президент ВФЛА) из текста.
 Это могут быть не только прямые цитаты, но и пересказы его высказываний.
 Верни СТРОГО JSON массив строк. Если утверждений нет — [].
@@ -233,11 +285,9 @@ def extract_quotes(text, url):
 JSON: ["утверждение 1", "утверждение 2"]"""
 
     try:
-        resp = requests.post(OLLAMA_URL, json={
-            "model": LLM_MODEL, "prompt": prompt, "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 500}
-        }, timeout=60)
-        content = resp.json().get("response", "").strip()
+        content = llm_generate(prompt, max_tokens=500)
+        if not content:
+            return []
 
         if "```" in content:
             lines = content.split("\n")

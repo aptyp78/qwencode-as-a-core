@@ -1,0 +1,49 @@
+# DashScope Token Plan — план использования облачных токенов
+# Настроен на 2026-07-19
+
+# API ключ (хранится в macOS Keychain: dashscope-modelstudio)
+# Получить: security find-generic-password -s "dashscope-modelstudio" -w
+
+endpoint: "https://ws-yrwako2ivay84n1p.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+
+# Модели и их стоимость (USD за 1M токенов)
+models:
+  # Генерация текста (основная)
+  qwen3.6-35b-a3b:
+    input: 0.70
+    output: 2.80
+    use_for: "extract_quotes, generate_queries, event_extraction"
+    max_tokens: 8000
+
+  # Reasoning (для сложных задач)
+  qwen3.6-plus:
+    input: 1.20
+    output: 4.80
+    use_for: "complex_analysis, validation"
+
+  # Embeddings
+  text-embedding-v4:
+    input: 0.00
+    output: 0.00
+    use_for: "embeddings (free tier)"
+    dimensions: 1024
+
+# Лимиты
+limits:
+  daily_budget_usd: 10.0
+  max_tokens_per_request: 8000
+  rate_limit_rpm: 60
+
+# Fallback на локальный Ollama если:
+# - DashScope недоступен (network error)
+# - Превышен лимит бюджета
+# - Задача требует air-gap (PSB closed contour)
+fallback:
+  type: "ollama_local"
+  url: "http://localhost:11434/api/generate"
+  model: "qwen3-coder-next"
+
+# Приоритет использования:
+# 1. DashScope (cloud) — основной, быстрее, больше контекст
+# 2. Ollama Cloud — если DashScope недоступен
+# 3. Local Ollama — fallback, air-gap
